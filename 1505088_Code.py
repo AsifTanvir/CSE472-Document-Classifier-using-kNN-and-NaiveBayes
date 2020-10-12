@@ -25,6 +25,11 @@ content = [x.strip() for x in Topics]
 
 print(content)
 
+def get_Norm(arr):
+    n = sum(map(lambda x:x*x,arr))
+    m = np.sqrt(n)
+    return m
+
 def Binary_Vector(List1, List2): 
     check = [0] *len(List1)
     idx = 0
@@ -51,6 +56,36 @@ def Numeric_vector(List1, List2):
     #print("check\n", check)
     return check
     
+def IDF_CW_vector(list1 , list2):
+    check = [0] * len(list1)
+    idx = 0
+    
+    for m in list1:
+        for n in list2:
+            if m in n:
+                check[idx] += 1
+        idx += 1
+    
+    return check
+
+def Calc_TF_IDF(list1 , list2 , D, C_W):
+    check = [0] * len(list1)
+    idx =0
+    alpha = 0
+    beta = 0
+    N_dw = Numeric_vector(list1, list2)
+    W_d = len(list2)
+    TF = [x / W_d for x in N_dw]
+    for i in list1:
+        if D == C_W[idx]:
+            alpha = 1
+            beta = 2
+        x = (D + alpha) / (C_W[idx] + beta)
+        idf = np.log(x)
+        check[idx] = TF[idx] * idf
+        idx += 1
+    return check
+    
 def euclidean_distance(instance1, instance2):
     distance = 0
     for i in range(len(instance1)):
@@ -63,6 +98,13 @@ def hamming_distance(list1 , list2):
         distance += abs(list1[i] - list2[i])
     return distance
 
+def TF_IDF_distance(list1, list2):
+    norm1 = get_Norm(list1)
+    norm2 = get_Norm(list2)
+    distance = 0
+    prod = np.dot(list1,list2)
+    distance = (prod) / (norm1 * norm2)
+    return distance
 
 from bs4 import BeautifulSoup as bs
 #t = ['Sample']
@@ -73,6 +115,7 @@ all_texts_validate = []
 Topic_validate = []
 all_texts_test = []
 Topic_test = []
+total_train_documents = 0
 for c in content:
     print(c)
     count = 0
@@ -83,6 +126,7 @@ for c in content:
         for items in soup.findAll("row"):
             if count == 50: break
             text = items["body"]
+            if len(text) == 0: continue
             #Removing <tags> and <a href>
             text = re.sub('<a.+?>.+?</a>', '', text)
             text = re.sub('<img.+?>', '', text)
@@ -119,6 +163,7 @@ for c in content:
                 set_words.update(text)
                 all_texts_train.append(text)
                 Topic_train.append(c)
+                total_train_documents += 1
             elif count >= 20 and count < 30:
                 all_texts_validate.append(text)
                 Topic_validate.append(c)
@@ -157,8 +202,26 @@ for word in all_texts_test:
     kNN_test_Euclid.append(X)
     #print("\n Test ", word)
 
-            
-def prediction_kNN(X_train, Y_train, X_test, n_neighbors):
+C_w = IDF_CW_vector(all_words,all_texts_train)
+#print("\n Vector: ", C_w, len(C_w))
+kNN_train_TF_IDF = []
+for word in all_texts_train:
+    X = Calc_TF_IDF(all_words, word, total_train_documents , C_w)
+    kNN_train_TF_IDF.append(X)
+    #print("\n Train ", len(X))
+
+kNN_test_TF_IDF = []
+for word in all_texts_test:
+    #print("\n Test ", word,len(word))
+    X = Calc_TF_IDF(all_words, word, total_train_documents , C_w)
+    kNN_test_TF_IDF.append(X)     
+    
+ 
+# =============================================================================
+# tfcheck = TF_IDF_distance(kNN_train_TF_IDF[1],kNN_test_TF_IDF[1])
+# print("\n Check: ", tfcheck)
+# =============================================================================
+def prediction_kNN(X_train, Y_train, X_test, n_neighbors , Type):
     allTestNeighbers=[]
     allPredictedOutputs =[]
     #allPredictedOutputs_euclid =[]
@@ -178,14 +241,22 @@ def prediction_kNN(X_train, Y_train, X_test, n_neighbors):
         #allDistances_euclid = []
         
         for trainInput, trainActualOutput in zip(X_train, Y_train):
-            distance = hamming_distance( trainInput, testInput)
-            #distance_euclid = euclidean_distance( trainInput, testInput)
-            #print(len(trainInput))
-            #print("\n Test " , len(testInput))
+            if Type == "Hamming" :
+                distance = hamming_distance( trainInput, testInput)
+            elif Type == "Euclidean":
+                distance = euclidean_distance( trainInput, testInput)
+            else:
+                distance = TF_IDF_distance(trainInput, testInput)
+            
+            #print(trainInput)
+            #print("\n Test " , distance)
             allDistances.append((trainInput, trainActualOutput, distance))
             #allDistances_euclid.append((trainInput, trainActualOutput, distance_euclid))
         #Sort (in ascending order) the training data points based on distances from the test point     
-        allDistances.sort(key=lambda x: x[2])
+        if Type == "TF-IDF":
+            allDistances.sort(key=lambda x: x[2], reverse=True)
+        else:
+            allDistances.sort(key=lambda x: x[2])
         #allDistances_euclid.sort(key=lambda x: x[2])
         
         
@@ -213,73 +284,83 @@ def prediction_kNN(X_train, Y_train, X_test, n_neighbors):
         
     return allPredictedOutputs, allTestNeighbers
 
-def performanceEvaluation(X_train, Y_train, X_test, Y_test, n_neighbors):
+def performanceEvaluation(X_train, Y_train, X_test, Y_test, n_neighbors, Type):
     totalCount = 0
     correctCount = 0
     
     for testInput, testActualOutput in zip(X_test, Y_test):
-        predictedOutput,_ = prediction_kNN(X_train, Y_train, [testInput], n_neighbors)
+        predictedOutput,_ = prediction_kNN(X_train, Y_train, [testInput], n_neighbors, Type)
         #print("\n Words", testActualOutput , predictedOutput[0][0])
         if predictedOutput[0][0] == testActualOutput:
             correctCount += 1
         totalCount += 1    
-    
-    print("\nHamming: \n n = ",n_neighbors,"Total Correct Count: ",correctCount," Total Wrong Count: ",totalCount-correctCount," Accuracy: ",(correctCount*100)/(totalCount))
+    if Type == "Hamming":
+        print("\nHamming: \n n = ",n_neighbors,"Total Correct Count: ",correctCount," Total Wrong Count: ",totalCount-correctCount," Accuracy: ",(correctCount*100)/(totalCount))
+    elif Type == "Euclidean":
+        print("\nEuclidean: \n n = ",n_neighbors,"Total Correct Count: ",correctCount," Total Wrong Count: ",totalCount-correctCount," Accuracy: ",(correctCount*100)/(totalCount))
+    else:
+        print("\nTF-IDF: \n n = ",n_neighbors,"Total Correct Count: ",correctCount," Total Wrong Count: ",totalCount-correctCount," Accuracy: ",(correctCount*100)/(totalCount))
 
-def prediction_kNN_Euclid(X_train, Y_train, X_test, n_neighbors):
-    allTestNeighbers=[]
-    allPredictedOutputs =[]
-    
-    #calculate for earch test data points
-    for testInput in X_test:
-        allDistances = []
-        
-        for trainInput, trainActualOutput in zip(X_train, Y_train):
-            distance_euclid = euclidean_distance( trainInput, testInput)
-            #print(len(trainInput))
-            #print("\n Test " , len(testInput))
-            allDistances.append((trainInput, trainActualOutput, distance_euclid))
-        #Sort (in ascending order) the training data points based on distances from the test point     
-        allDistances.sort(key=lambda x: x[2])
-        
-        
-        #Assuming output labels are from 0 to uniqueOutputCount-1
-        #voteCount = np.zeros(uniqueOutputCount)
-        neighbors = []
-        class_label = []
-        for n in range(n_neighbors):
-            neighbors.append(allDistances[n][0])
-            class_label.append(allDistances[n][1])
-            
-        
-        #Determine the Majority Voting (Equal weight considered)
-        most_common_words= [word for word, word_count in Counter(class_label).most_common(1)]
-        
-        
-        allTestNeighbers.append(neighbors)
-        allPredictedOutputs.append(most_common_words)
-        
-    return allPredictedOutputs, allTestNeighbers
 
-def performanceEvaluation_Euclid(X_train, Y_train, X_test, Y_test, n_neighbors):
-    totalCount_euclid = 0
-    correctCount_euclid = 0
-    
-    for testInput, testActualOutput in zip(X_test, Y_test):
-        predictedOutput_euclid,_ = prediction_kNN_Euclid(X_train, Y_train, [testInput], n_neighbors)
-        #print("\n Words", testActualOutput , predictedOutput[0][0])
-        
-        if predictedOutput_euclid[0][0] == testActualOutput:
-            correctCount_euclid += 1
-        totalCount_euclid += 1
-    
-    print("\n Euclidean:\n n = ",n_neighbors,"Total Correct Count: ",correctCount_euclid," Total Wrong Count: ",totalCount_euclid-correctCount_euclid," Accuracy: ",(correctCount_euclid*100)/(totalCount_euclid))
+
+# =============================================================================
+# def prediction_kNN_Euclid(X_train, Y_train, X_test, n_neighbors):
+#     allTestNeighbers=[]
+#     allPredictedOutputs =[]
+#     
+#     #calculate for earch test data points
+#     for testInput in X_test:
+#         allDistances = []
+#         
+#         for trainInput, trainActualOutput in zip(X_train, Y_train):
+#             distance_euclid = euclidean_distance( trainInput, testInput)
+#             #print(len(trainInput))
+#             #print("\n Test " , len(testInput))
+#             allDistances.append((trainInput, trainActualOutput, distance_euclid))
+#         #Sort (in ascending order) the training data points based on distances from the test point     
+#         allDistances.sort(key=lambda x: x[2])
+#         
+#         
+#         #Assuming output labels are from 0 to uniqueOutputCount-1
+#         #voteCount = np.zeros(uniqueOutputCount)
+#         neighbors = []
+#         class_label = []
+#         for n in range(n_neighbors):
+#             neighbors.append(allDistances[n][0])
+#             class_label.append(allDistances[n][1])
+#             
+#         
+#         #Determine the Majority Voting (Equal weight considered)
+#         most_common_words= [word for word, word_count in Counter(class_label).most_common(1)]
+#         
+#         
+#         allTestNeighbers.append(neighbors)
+#         allPredictedOutputs.append(most_common_words)
+#         
+#     return allPredictedOutputs, allTestNeighbers
+# 
+# def performanceEvaluation_Euclid(X_train, Y_train, X_test, Y_test, n_neighbors):
+#     totalCount_euclid = 0
+#     correctCount_euclid = 0
+#     
+#     for testInput, testActualOutput in zip(X_test, Y_test):
+#         predictedOutput_euclid,_ = prediction_kNN_Euclid(X_train, Y_train, [testInput], n_neighbors)
+#         #print("\n Words", testActualOutput , predictedOutput[0][0])
+#         
+#         if predictedOutput_euclid[0][0] == testActualOutput:
+#             correctCount_euclid += 1
+#         totalCount_euclid += 1
+#     
+#     print("\n Euclidean:\n n = ",n_neighbors,"Total Correct Count: ",correctCount_euclid," Total Wrong Count: ",totalCount_euclid-correctCount_euclid," Accuracy: ",(correctCount_euclid*100)/(totalCount_euclid))
+# 
+# =============================================================================
 
 for n in range(6):
     if n%2 == 0 : continue
     #print(n)
-    performanceEvaluation(kNN_train, Topic_train, kNN_test , Topic_test, n)
-    performanceEvaluation_Euclid(kNN_train_Euclid,Topic_train,kNN_test_Euclid,Topic_test,n)
+    performanceEvaluation(kNN_train, Topic_train, kNN_test , Topic_test, n, "Hamming")
+    performanceEvaluation(kNN_train_Euclid,Topic_train,kNN_test_Euclid,Topic_test,n, "Euclidean")
+    performanceEvaluation(kNN_train_TF_IDF, Topic_train, kNN_test_TF_IDF, Topic_test, n, "TF-IDF")
 
 #print("\n",all_words)
 #print("\n\n", set_words)
