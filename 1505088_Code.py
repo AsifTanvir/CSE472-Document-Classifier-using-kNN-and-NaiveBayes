@@ -16,6 +16,8 @@ from nltk.stem import WordNetLemmatizer
 from nltk.stem import PorterStemmer
 import re
 from collections import Counter
+from operator import add
+from functools import reduce
 #words=["i", "love", "you", "i", "you", "a", "are", "you", "you", "fine", "green"]
 #print(most_common_words)
 
@@ -106,6 +108,20 @@ def TF_IDF_distance(list1, list2):
     distance = (prod) / (norm1 * norm2)
     return distance
 
+# =============================================================================
+# #NB starts here
+# =============================================================================
+def Prob_W_C(Topic , Test, alpha, V):
+    #check = [0] *len(Topic)
+    tot_prob = 0
+    Nc = len(Topic)
+    for word in Test:
+        Nw_C = Topic.count(word)
+        V_alpha = alpha * V
+        Pw_C = np.log((Nw_C + alpha) / (Nc + V_alpha))
+        tot_prob += Pw_C
+    return tot_prob
+
 from bs4 import BeautifulSoup as bs
 #t = ['Sample']
 set_words = set()
@@ -115,6 +131,7 @@ all_texts_validate = []
 Topic_validate = []
 all_texts_test = []
 Topic_test = []
+Words_Topic_NB = []
 total_train_documents = 0
 for c in content:
     print(c)
@@ -173,54 +190,63 @@ for c in content:
             #all_texts.append(text)
             #Topic_train.append(c)
             count = count + 1
-        
+        #For NB
+        #uniq_wrd = list(set_words)
+        wrd = reduce(add, all_texts_train)
+        Words_Topic_NB.append((wrd, c))
 
 all_words = list(set_words)
+#for l in Words_Topic_NB:
+#print("\n NB:", len(Words_Topic_NB))
 
 #Create Binary Vector of words
-kNN_train = []
-for word in all_texts_train:
-    X = Binary_Vector(all_words, word)
-    kNN_train.append(X)
-    #print("\n Train ", X)
-
-kNN_test = []
-for word in all_texts_test:
-    X = Binary_Vector(all_words, word)
-    kNN_test.append(X)
-    #print("\n Test ", len(X))
-
-kNN_train_Euclid = []
-for word in all_texts_train:
-    X = Numeric_vector(all_words, word)
-    kNN_train_Euclid.append(X)
-    #print("\n Train ", word)
-    
-kNN_test_Euclid = []
-for word in all_texts_test:
-    X = Numeric_vector(all_words, word)
-    kNN_test_Euclid.append(X)
-    #print("\n Test ", word)
-
-C_w = IDF_CW_vector(all_words,all_texts_train)
-#print("\n Vector: ", C_w, len(C_w))
-kNN_train_TF_IDF = []
-for word in all_texts_train:
-    X = Calc_TF_IDF(all_words, word, total_train_documents , C_w)
-    kNN_train_TF_IDF.append(X)
-    #print("\n Train ", len(X))
-
-kNN_test_TF_IDF = []
-for word in all_texts_test:
-    #print("\n Test ", word,len(word))
-    X = Calc_TF_IDF(all_words, word, total_train_documents , C_w)
-    kNN_test_TF_IDF.append(X)     
+# =============================================================================
+# kNN_train = []
+# for word in all_texts_train:
+#     if len(word) == 0: continue
+#     X = Binary_Vector(all_words, word)
+#     kNN_train.append(X)
+#     #print("\n Train ", all_words , word, X)
+# 
+# kNN_test = []
+# for word in all_texts_test:
+#     if len(word) == 0: continue
+#     X = Binary_Vector(all_words, word)
+#     kNN_test.append(X)
+#     #print("\n Test ", len(X))
+# 
+# kNN_train_Euclid = []
+# for word in all_texts_train:
+#     if len(word) == 0: continue
+#     X = Numeric_vector(all_words, word)
+#     kNN_train_Euclid.append(X)
+#     #print("\n Train ", word)
+#     
+# kNN_test_Euclid = []
+# for word in all_texts_test:
+#     if len(word) == 0: continue
+#     X = Numeric_vector(all_words, word)
+#     kNN_test_Euclid.append(X)
+#     #print("\n Test ", word)
+# 
+# C_w = IDF_CW_vector(all_words,all_texts_train)
+# #print("\n Vector: ", C_w, len(C_w))
+# kNN_train_TF_IDF = []
+# for word in all_texts_train:
+#     if len(word) == 0: continue
+#     X = Calc_TF_IDF(all_words, word, total_train_documents , C_w)
+#     kNN_train_TF_IDF.append(X)
+#     #print("\n Train ", len(X))
+# 
+# kNN_test_TF_IDF = []
+# for word in all_texts_test:
+#     if len(word) == 0: continue
+#     #print("\n Test ", word,len(word))
+#     X = Calc_TF_IDF(all_words, word, total_train_documents , C_w)
+#     kNN_test_TF_IDF.append(X)     
+# =============================================================================
     
  
-# =============================================================================
-# tfcheck = TF_IDF_distance(kNN_train_TF_IDF[1],kNN_test_TF_IDF[1])
-# print("\n Check: ", tfcheck)
-# =============================================================================
 def prediction_kNN(X_train, Y_train, X_test, n_neighbors , Type):
     allTestNeighbers=[]
     allPredictedOutputs =[]
@@ -237,6 +263,7 @@ def prediction_kNN(X_train, Y_train, X_test, n_neighbors , Type):
     
     #calculate for earch test data points
     for testInput in X_test:
+        #print("\n n", n)
         allDistances = []
         #allDistances_euclid = []
         
@@ -290,7 +317,7 @@ def performanceEvaluation(X_train, Y_train, X_test, Y_test, n_neighbors, Type):
     
     for testInput, testActualOutput in zip(X_test, Y_test):
         predictedOutput,_ = prediction_kNN(X_train, Y_train, [testInput], n_neighbors, Type)
-        #print("\n Words", testActualOutput , predictedOutput[0][0])
+        #print("\n Words", [testInput] , X_train)
         if predictedOutput[0][0] == testActualOutput:
             correctCount += 1
         totalCount += 1    
@@ -358,10 +385,45 @@ def performanceEvaluation(X_train, Y_train, X_test, Y_test, n_neighbors, Type):
 for n in range(6):
     if n%2 == 0 : continue
     #print(n)
-    performanceEvaluation(kNN_train, Topic_train, kNN_test , Topic_test, n, "Hamming")
-    performanceEvaluation(kNN_train_Euclid,Topic_train,kNN_test_Euclid,Topic_test,n, "Euclidean")
-    performanceEvaluation(kNN_train_TF_IDF, Topic_train, kNN_test_TF_IDF, Topic_test, n, "TF-IDF")
+    #performanceEvaluation(kNN_train, Topic_train, kNN_test , Topic_test, n, "Hamming")
+    #performanceEvaluation(kNN_train_Euclid,Topic_train,kNN_test_Euclid,Topic_test,n, "Euclidean")
+    #performanceEvaluation(kNN_train_TF_IDF, Topic_train, kNN_test_TF_IDF, Topic_test, n, "TF-IDF")
 
+def prediction_NB(X_test, alpha, V):
+    prob = 0
+    allProbabilities = []
+    for l in Words_Topic_NB:
+        prob = Prob_W_C(l[0], X_test, alpha, V)
+        #print("\n", prob)
+        allProbabilities.append((prob, l[1]))
+    allProbabilities.sort(key=lambda x: x[0], reverse=True)
+    #print("\n",  allProbabilities)
+    return allProbabilities[0][1]
+
+def PerformanceNB(X_test, Y_test, alpha, V):
+    totalCount = 0
+    correctCount = 0
+    
+    for testInput, testActualOutput in zip(X_test, Y_test):
+        predictedOutput = prediction_NB(testInput, alpha, V)
+        #print("\n Words", predictedOutput , testActualOutput)
+        if predictedOutput == testActualOutput:
+            correctCount += 1
+        totalCount += 1
+    print("\n Naive Bayes:\n alpha = ",alpha,"Total Correct Count: ",correctCount," Total Wrong Count: ",totalCount-correctCount," Accuracy: ",(correctCount*100)/(totalCount))
+
+V = len(all_words)
+alpha = np.arange(0.1, 1.1, 0.1)
+for alp in alpha:
+    PerformanceNB(all_texts_validate, Topic_validate, alp, V)
+
+# =============================================================================
+# z = Prob_W_C(Words_Topic_NB[0][0], all_texts_train[10], 1, len(all_texts_train[0]))
+# z1 = Prob_W_C(Words_Topic_NB[1][0], all_texts_train[10], 1, len(all_texts_train[0]))
+# z2 = Prob_W_C(Words_Topic_NB[2][0], all_texts_train[10], 1, len(all_texts_train[0]))
+# print(z, z1, z2)
+# =============================================================================
+#ki ek obostha
 #print("\n",all_words)
 #print("\n\n", set_words)
 #print("\n\n", X_train)
