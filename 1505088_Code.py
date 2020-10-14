@@ -18,8 +18,8 @@ import re
 from collections import Counter
 from operator import add
 from functools import reduce
-#words=["i", "love", "you", "i", "you", "a", "are", "you", "you", "fine", "green"]
-#print(most_common_words)
+from scipy import spatial
+import math
 
 with open('Data/topics.txt') as f:
     Topics = f.readlines()
@@ -57,7 +57,8 @@ def Numeric_vector(List1, List2):
         idx += 1
     #print("check\n", check)
     return check
-    
+ 
+## Creating a vector that contains the number of documents of each word occur
 def IDF_CW_vector(list1 , list2):
     check = [0] * len(list1)
     idx = 0
@@ -92,7 +93,7 @@ def euclidean_distance(instance1, instance2):
     distance = 0
     for i in range(len(instance1)):
         distance += (instance1[i] - instance2[i])**2
-    return np.sqrt(distance)
+    return math.sqrt(distance)
 
 def hamming_distance(list1 , list2):
     distance = 0
@@ -101,11 +102,14 @@ def hamming_distance(list1 , list2):
     return distance
 
 def TF_IDF_distance(list1, list2):
-    norm1 = get_Norm(list1)
-    norm2 = get_Norm(list2)
-    distance = 0
-    prod = np.dot(list1,list2)
-    distance = (prod) / (norm1 * norm2)
+# =============================================================================
+#     norm1 = get_Norm(list1)
+#     norm2 = get_Norm(list2)
+#     distance = 0
+#     prod = np.dot(list1,list2)
+#     distance = (prod) / (norm1 * norm2)
+# =============================================================================
+    distance = 1 - spatial.distance.cosine(list1, list2)
     return distance
 
 # =============================================================================
@@ -141,7 +145,7 @@ for c in content:
         soup = bs(content , features= "lxml")
         
         for items in soup.findAll("row"):
-            if count == 50: break
+            if count == 480: break
             text = items["body"]
             if len(text) == 0: continue
             #Removing <tags> and <a href>
@@ -176,12 +180,12 @@ for c in content:
             
             #Dividing into train and test
             
-            if count < 20:
+            if count < 200:
                 set_words.update(text)
                 all_texts_train.append(text)
                 Topic_train.append(c)
                 total_train_documents += 1
-            elif count >= 20 and count < 30:
+            elif count >= 200 and count < 280:
                 all_texts_validate.append(text)
                 Topic_validate.append(c)
             else:
@@ -193,13 +197,30 @@ for c in content:
         #For NB
         #uniq_wrd = list(set_words)
         wrd = reduce(add, all_texts_train)
-        Words_Topic_NB.append((wrd, c))
+        Words_Topic_NB.append((wrd, c)) #All words in each topic
 
 all_words = list(set_words)
 #for l in Words_Topic_NB:
 #print("\n NB:", len(Words_Topic_NB))
 
-#Create Binary Vector of words
+#Create Vectors of words
+def Vectorize(Lists, Type):
+    kNN = []
+    C_w = IDF_CW_vector(all_words,Lists)
+    D = len(Lists)
+    for word in Lists:
+        if len(word) == 0: continue
+        if Type == "Hamming":
+            X = Binary_Vector(all_words, word)
+            kNN.append(X)
+        elif Type == "Euclidean":
+            X = Numeric_vector(all_words, word)
+            kNN.append(X)
+        else:
+            X = Calc_TF_IDF(all_words, word, D , C_w)
+            kNN.append(X)
+    return kNN
+        
 # =============================================================================
 # kNN_train = []
 # for word in all_texts_train:
@@ -215,6 +236,12 @@ all_words = list(set_words)
 #     kNN_test.append(X)
 #     #print("\n Test ", len(X))
 # 
+# kNN_validate = []
+# for word in all_texts_validate:
+#     if len(word) == 0: continue
+#     X = Binary_Vector(all_words, word)
+#     kNN_validate.append(X)
+#     
 # kNN_train_Euclid = []
 # for word in all_texts_train:
 #     if len(word) == 0: continue
@@ -228,6 +255,12 @@ all_words = list(set_words)
 #     X = Numeric_vector(all_words, word)
 #     kNN_test_Euclid.append(X)
 #     #print("\n Test ", word)
+# 
+# kNN_validate_Euclid = []
+# for word in all_texts_validate:
+#     if len(word) == 0: continue
+#     X = Numeric_vector(all_words, word)
+#     kNN_validate_Euclid.append(X)
 # 
 # C_w = IDF_CW_vector(all_words,all_texts_train)
 # #print("\n Vector: ", C_w, len(C_w))
@@ -244,70 +277,63 @@ all_words = list(set_words)
 #     #print("\n Test ", word,len(word))
 #     X = Calc_TF_IDF(all_words, word, total_train_documents , C_w)
 #     kNN_test_TF_IDF.append(X)     
+#     
+# kNN_validate_TF_IDF = []
+# for word in all_texts_validate:
+#     if len(word) == 0: continue
+#     #print("\n Test ", word,len(word))
+#     X = Calc_TF_IDF(all_words, word, total_train_documents , C_w)
+#     kNN_validate_TF_IDF.append(X)     
 # =============================================================================
-    
- 
-def prediction_kNN(X_train, Y_train, X_test, n_neighbors , Type):
+
+# =============================================================================
+# #Prediction of kNN
+# =============================================================================
+def prediction_kNN(X_train, Y_train, testInput, n_neighbors , Type):
     allTestNeighbers=[]
     allPredictedOutputs =[]
-    #allPredictedOutputs_euclid =[]
-    
-    #Determine Number of unique class lebels
-# =============================================================================
-#     uniqueOutputLabels = []
-#     for label in Y_train:
-#         if label not in uniqueOutputLabels:
-#             uniqueOutputLabels.append(label)
-#     uniqueOutputCount = len(uniqueOutputLabels)
-# =============================================================================
     
     #calculate for earch test data points
-    for testInput in X_test:
-        #print("\n n", n)
-        allDistances = []
-        #allDistances_euclid = []
-        
-        for trainInput, trainActualOutput in zip(X_train, Y_train):
-            if Type == "Hamming" :
-                distance = hamming_distance( trainInput, testInput)
-            elif Type == "Euclidean":
-                distance = euclidean_distance( trainInput, testInput)
-            else:
-                distance = TF_IDF_distance(trainInput, testInput)
-            
-            #print(trainInput)
-            #print("\n Test " , distance)
-            allDistances.append((trainInput, trainActualOutput, distance))
-            #allDistances_euclid.append((trainInput, trainActualOutput, distance_euclid))
-        #Sort (in ascending order) the training data points based on distances from the test point     
-        if Type == "TF-IDF":
-            allDistances.sort(key=lambda x: x[2], reverse=True)
+    #for testInput in X_test:
+    allDistances = []
+    
+    for trainInput, trainActualOutput in zip(X_train, Y_train):
+        if Type == "Hamming" :
+            distance = hamming_distance( trainInput, testInput)
+        elif Type == "Euclidean":
+            distance = euclidean_distance( trainInput, testInput)
         else:
-            allDistances.sort(key=lambda x: x[2])
-        #allDistances_euclid.sort(key=lambda x: x[2])
+            distance = TF_IDF_distance(trainInput, testInput)
         
-        
-        #Assuming output labels are from 0 to uniqueOutputCount-1
-        #voteCount = np.zeros(uniqueOutputCount)
-        neighbors = []
-        class_label = []
-        #neighbors_euclid = []
-        #class_label_euclid = []
-        #print("\n AllDistances :", allDistances)
-        for n in range(n_neighbors):
-            neighbors.append(allDistances[n][0])
-            class_label.append(allDistances[n][1])
-            #voteCount[class_label] += 1
-            #neighbors_euclid.append(allDistances_euclid[n][0])
-            #class_label_euclid.append(allDistances_euclid[n][1])
-        
-        #Determine the Majority Voting (Equal weight considered)
-        most_common_words= [word for word, word_count in Counter(class_label).most_common(1)]
-        #most_common_words_euclid= [word for word, word_count in Counter(class_label_euclid).most_common(1)]
-        #predictedOutput = np.argmax(voteCount)
-        
-        allTestNeighbers.append(neighbors)
-        allPredictedOutputs.append(most_common_words)
+        #print(trainInput)
+        #print("\n Test " , distance)
+        allDistances.append((trainInput, trainActualOutput, distance))
+        #allDistances_euclid.append((trainInput, trainActualOutput, distance_euclid))
+    #Sort (in ascending order) the training data points based on distances from the test point     
+    if Type == "TF-IDF":
+        allDistances.sort(key=lambda x: x[2], reverse=True)
+    else:
+        allDistances.sort(key=lambda x: x[2])
+    #allDistances_euclid.sort(key=lambda x: x[2])
+    
+    
+    neighbors = []
+    class_label = []
+    #print("\n AllDistances :", allDistances)
+    for n in range(n_neighbors):
+        neighbors.append(allDistances[n][0])
+        class_label.append(allDistances[n][1])
+        #voteCount[class_label] += 1
+        #neighbors_euclid.append(allDistances_euclid[n][0])
+        #class_label_euclid.append(allDistances_euclid[n][1])
+    
+    #Determine the Majority Voting (Equal weight considered)
+    most_common_words= [word for word, word_count in Counter(class_label).most_common(1)]
+    #most_common_words_euclid= [word for word, word_count in Counter(class_label_euclid).most_common(1)]
+    #predictedOutput = np.argmax(voteCount)
+    
+    allTestNeighbers.append(neighbors)
+    allPredictedOutputs.append(most_common_words)
         
     return allPredictedOutputs, allTestNeighbers
 
@@ -316,78 +342,47 @@ def performanceEvaluation(X_train, Y_train, X_test, Y_test, n_neighbors, Type):
     correctCount = 0
     
     for testInput, testActualOutput in zip(X_test, Y_test):
-        predictedOutput,_ = prediction_kNN(X_train, Y_train, [testInput], n_neighbors, Type)
-        #print("\n Words", [testInput] , X_train)
+        predictedOutput,_ = prediction_kNN(X_train, Y_train, testInput, n_neighbors, Type)
+        print("\n Words", predictedOutput[0][0], testActualOutput)
         if predictedOutput[0][0] == testActualOutput:
             correctCount += 1
         totalCount += 1    
     if Type == "Hamming":
-        print("\nHamming: \n n = ",n_neighbors,"Total Correct Count: ",correctCount," Total Wrong Count: ",totalCount-correctCount," Accuracy: ",(correctCount*100)/(totalCount))
+        print("\nHamming: \n k = ",n_neighbors,"Total Correct Count: ",correctCount," Total Wrong Count: ",totalCount-correctCount," Accuracy: ",(correctCount*100)/(totalCount))
     elif Type == "Euclidean":
-        print("\nEuclidean: \n n = ",n_neighbors,"Total Correct Count: ",correctCount," Total Wrong Count: ",totalCount-correctCount," Accuracy: ",(correctCount*100)/(totalCount))
+        print("\nEuclidean: \n k = ",n_neighbors,"Total Correct Count: ",correctCount," Total Wrong Count: ",totalCount-correctCount," Accuracy: ",(correctCount*100)/(totalCount))
     else:
-        print("\nTF-IDF: \n n = ",n_neighbors,"Total Correct Count: ",correctCount," Total Wrong Count: ",totalCount-correctCount," Accuracy: ",(correctCount*100)/(totalCount))
+        print("\nTF-IDF: \n k = ",n_neighbors,"Total Correct Count: ",correctCount," Total Wrong Count: ",totalCount-correctCount," Accuracy: ",(correctCount*100)/(totalCount))
+    return (correctCount*100)/(totalCount)
 
 
-
+best_result = []
+kNN_train = Vectorize(all_texts_train, "Hamming")
+kNN_test = Vectorize(all_texts_test, "Hamming")
+kNN_validate = Vectorize(all_texts_validate, "Hamming")
+kNN_train_Euclid = Vectorize(all_texts_train, "Euclidean")
+kNN_test_Euclid = Vectorize(all_texts_test, "Euclidean")
+kNN_validate_Euclid = Vectorize(all_texts_validate, "Euclidean")
+kNN_train_TF_IDF = Vectorize(all_texts_train, "TF-IDF")
+kNN_test_TF_IDF = Vectorize(all_texts_test, "TF-IDF")
+kNN_validate_TF_IDF = Vectorize(all_texts_validate, "TF-IDF")
+for n in range(1,6,2):
+    #if n%2 == 0 : continue
+    print(n)
 # =============================================================================
-# def prediction_kNN_Euclid(X_train, Y_train, X_test, n_neighbors):
-#     allTestNeighbers=[]
-#     allPredictedOutputs =[]
-#     
-#     #calculate for earch test data points
-#     for testInput in X_test:
-#         allDistances = []
-#         
-#         for trainInput, trainActualOutput in zip(X_train, Y_train):
-#             distance_euclid = euclidean_distance( trainInput, testInput)
-#             #print(len(trainInput))
-#             #print("\n Test " , len(testInput))
-#             allDistances.append((trainInput, trainActualOutput, distance_euclid))
-#         #Sort (in ascending order) the training data points based on distances from the test point     
-#         allDistances.sort(key=lambda x: x[2])
-#         
-#         
-#         #Assuming output labels are from 0 to uniqueOutputCount-1
-#         #voteCount = np.zeros(uniqueOutputCount)
-#         neighbors = []
-#         class_label = []
-#         for n in range(n_neighbors):
-#             neighbors.append(allDistances[n][0])
-#             class_label.append(allDistances[n][1])
-#             
-#         
-#         #Determine the Majority Voting (Equal weight considered)
-#         most_common_words= [word for word, word_count in Counter(class_label).most_common(1)]
-#         
-#         
-#         allTestNeighbers.append(neighbors)
-#         allPredictedOutputs.append(most_common_words)
-#         
-#     return allPredictedOutputs, allTestNeighbers
-# 
-# def performanceEvaluation_Euclid(X_train, Y_train, X_test, Y_test, n_neighbors):
-#     totalCount_euclid = 0
-#     correctCount_euclid = 0
-#     
-#     for testInput, testActualOutput in zip(X_test, Y_test):
-#         predictedOutput_euclid,_ = prediction_kNN_Euclid(X_train, Y_train, [testInput], n_neighbors)
-#         #print("\n Words", testActualOutput , predictedOutput[0][0])
-#         
-#         if predictedOutput_euclid[0][0] == testActualOutput:
-#             correctCount_euclid += 1
-#         totalCount_euclid += 1
-#     
-#     print("\n Euclidean:\n n = ",n_neighbors,"Total Correct Count: ",correctCount_euclid," Total Wrong Count: ",totalCount_euclid-correctCount_euclid," Accuracy: ",(correctCount_euclid*100)/(totalCount_euclid))
-# 
+#     best_ham = performanceEvaluation(kNN_train, Topic_train, kNN_validate , Topic_validate, n, "Hamming")
+#     best_result.append((best_ham , n , "Hamming"))
+#     best_euclid = performanceEvaluation(kNN_train_Euclid,Topic_train,kNN_validate_Euclid,Topic_validate,n, "Euclidean")
+#     best_result.append((best_euclid , n , "Euclidean"))
 # =============================================================================
-
-for n in range(6):
-    if n%2 == 0 : continue
-    #print(n)
-    #performanceEvaluation(kNN_train, Topic_train, kNN_test , Topic_test, n, "Hamming")
-    #performanceEvaluation(kNN_train_Euclid,Topic_train,kNN_test_Euclid,Topic_test,n, "Euclidean")
-    #performanceEvaluation(kNN_train_TF_IDF, Topic_train, kNN_test_TF_IDF, Topic_test, n, "TF-IDF")
+    best_TF = performanceEvaluation(kNN_train_TF_IDF, Topic_train, kNN_validate_TF_IDF, Topic_validate, n, "TF-IDF")
+    best_result.append((best_TF , n , "TF-IDF"))
+    
+best_result.sort(key=lambda x: x[0], reverse = True)
+best_k = best_result[0][1]
+best_type = best_result[0][2]
+print("\n Best kNN : " , best_k , best_type)
+    
 
 def prediction_NB(X_test, alpha, V):
     prob = 0
@@ -411,11 +406,44 @@ def PerformanceNB(X_test, Y_test, alpha, V):
             correctCount += 1
         totalCount += 1
     print("\n Naive Bayes:\n alpha = ",alpha,"Total Correct Count: ",correctCount," Total Wrong Count: ",totalCount-correctCount," Accuracy: ",(correctCount*100)/(totalCount))
+    return (correctCount*100)/(totalCount)
 
-V = len(all_words)
+best_accuracy = []
 alpha = np.arange(0.1, 1.1, 0.1)
+V = len(all_words)
 for alp in alpha:
-    PerformanceNB(all_texts_validate, Topic_validate, alp, V)
+    accuracy = PerformanceNB(all_texts_validate, Topic_validate, alp, V)
+    best_accuracy.append(accuracy)
+idx = np.argmax(best_accuracy)
+best_alpha = alpha[idx]
+print("\n Best Alpha: ", best_alpha)
+
+
+
+# =============================================================================
+#  All 50 Iterations.....
+# =============================================================================
+train_iter = []
+topic_train_iter = []
+test_iter = []
+topic_test_iter = []
+for i in range(50):
+    for c in range(len(content)):
+        a = []
+        slic = (i*200) + (c*4)
+        a = all_texts_train[slic : slic+4]
+        train_iter = train_iter + a
+        a = all_texts_test[slic : slic+4]
+        test_iter = test_iter + a
+        a = Topic_train[slic : slic+4]
+        topic_train_iter = topic_train_iter + a
+        a = Topic_test[slic : slic+4]
+        topic_test_iter = topic_test_iter + a
+    train = Vectorize(train_iter, best_type)
+    test = Vectorize(test_iter, best_type)
+    accuracy_kNN = performanceEvaluation(train, Topic_train, test, Topic_test, best_k, best_type)
+    accuracy_NB = PerformanceNB(test_iter, topic_test_iter, best_alpha, V)
+    print("\n Iteration: " , i + "\n Accuracy kNN: ", accuracy_kNN + " Accuracy NB: " , accuracy_NB)
 
 # =============================================================================
 # z = Prob_W_C(Words_Topic_NB[0][0], all_texts_train[10], 1, len(all_texts_train[0]))
