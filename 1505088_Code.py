@@ -19,13 +19,13 @@ from collections import Counter
 from operator import add
 from functools import reduce
 from scipy import spatial
-import math
+from scipy import stats
 
 with open('Data/topics.txt') as f:
     Topics = f.readlines()
-content = [x.strip() for x in Topics]
+all_topics = [x.strip() for x in Topics]
 
-print(content)
+print(all_topics)
 
 def get_Norm(arr):
     n = sum(map(lambda x:x*x,arr))
@@ -80,6 +80,7 @@ def Calc_TF_IDF(list1 , list2 , D, C_W):
     W_d = len(list2)
     TF = [x / W_d for x in N_dw]
     for i in list1:
+        if C_W[idx] == 0: continue
         if D == C_W[idx]:
             alpha = 1
             beta = 2
@@ -89,27 +90,40 @@ def Calc_TF_IDF(list1 , list2 , D, C_W):
         idx += 1
     return check
     
-def euclidean_distance(instance1, instance2):
+def euclidean_distance(list1, list2):
     distance = 0
-    for i in range(len(instance1)):
-        distance += (instance1[i] - instance2[i])**2
-    return math.sqrt(distance)
+# =============================================================================
+#     a = np.array(list1)
+#     b = np.array(list2)
+# =============================================================================
+# =============================================================================
+#     for i in range(len(instance1)):
+#         distance += (instance1[i] - instance2[i])**2
+#     return math.sqrt(distance)
+# =============================================================================
+    distance = np.linalg.norm(list1-list2 ,ord = 2)
+    return distance
 
 def hamming_distance(list1 , list2):
     distance = 0
-    for i in range(len(list1)):
-        distance += abs(list1[i] - list2[i])
+# =============================================================================
+#     a = np.array(list1)
+#     b = np.array(list2)
+# =============================================================================
+# =============================================================================
+#     for i in range(len(list1)):
+#         distance += abs(list1[i] - list2[i])
+# =============================================================================
+    distance = np.linalg.norm(list1-list2 ,ord = 1)
     return distance
 
 def TF_IDF_distance(list1, list2):
-# =============================================================================
-#     norm1 = get_Norm(list1)
-#     norm2 = get_Norm(list2)
-#     distance = 0
-#     prod = np.dot(list1,list2)
-#     distance = (prod) / (norm1 * norm2)
-# =============================================================================
-    distance = 1 - spatial.distance.cosine(list1, list2)
+    norm1 = np.linalg.norm(list1 ,ord = 2)
+    norm2 = np.linalg.norm(list2 ,ord = 2)
+    distance = 0
+    prod = np.dot(list1,list2)
+    distance = (prod) / (norm1 * norm2)
+    #distance = 1 - spatial.distance.cosine(list1, list2)
     return distance
 
 # =============================================================================
@@ -121,8 +135,7 @@ def Prob_W_C(Topic , Test, alpha, V):
     Nc = len(Topic)
     for word in Test:
         Nw_C = Topic.count(word)
-        V_alpha = alpha * V
-        Pw_C = np.log((Nw_C + alpha) / (Nc + V_alpha))
+        Pw_C = np.log((Nw_C + alpha) / (Nc + (alpha * V)))
         tot_prob += Pw_C
     return tot_prob
 
@@ -137,7 +150,7 @@ all_texts_test = []
 Topic_test = []
 Words_Topic_NB = []
 total_train_documents = 0
-for c in content:
+for c in all_topics:
     print(c)
     count = 0
     with open("Data/Training/"+ c + '.xml','r',encoding='utf-8') as file:
@@ -145,7 +158,7 @@ for c in content:
         soup = bs(content , features= "lxml")
         
         for items in soup.findAll("row"):
-            if count == 480: break
+            if count == 1200: break
             text = items["body"]
             if len(text) == 0: continue
             #Removing <tags> and <a href>
@@ -180,12 +193,12 @@ for c in content:
             
             #Dividing into train and test
             
-            if count < 200:
+            if count < 500:
                 set_words.update(text)
                 all_texts_train.append(text)
                 Topic_train.append(c)
                 total_train_documents += 1
-            elif count >= 200 and count < 280:
+            elif count >= 500 and count < 700:
                 all_texts_validate.append(text)
                 Topic_validate.append(c)
             else:
@@ -203,11 +216,13 @@ all_words = list(set_words)
 #for l in Words_Topic_NB:
 #print("\n NB:", len(Words_Topic_NB))
 
+C_w = IDF_CW_vector(all_words,all_texts_train)
+D = total_train_documents
 #Create Vectors of words
 def Vectorize(Lists, Type):
     kNN = []
-    C_w = IDF_CW_vector(all_words,Lists)
-    D = len(Lists)
+    #C_w = IDF_CW_vector(all_words,Lists)
+    #D = len(Lists)
     for word in Lists:
         if len(word) == 0: continue
         if Type == "Hamming":
@@ -343,10 +358,10 @@ def performanceEvaluation(X_train, Y_train, X_test, Y_test, n_neighbors, Type):
     
     for testInput, testActualOutput in zip(X_test, Y_test):
         predictedOutput,_ = prediction_kNN(X_train, Y_train, testInput, n_neighbors, Type)
-        print("\n Words", predictedOutput[0][0], testActualOutput)
+        #print("\n Words", predictedOutput[0][0], testActualOutput)
         if predictedOutput[0][0] == testActualOutput:
             correctCount += 1
-        totalCount += 1    
+        totalCount += 1
     if Type == "Hamming":
         print("\nHamming: \n k = ",n_neighbors,"Total Correct Count: ",correctCount," Total Wrong Count: ",totalCount-correctCount," Accuracy: ",(correctCount*100)/(totalCount))
     elif Type == "Euclidean":
@@ -356,32 +371,32 @@ def performanceEvaluation(X_train, Y_train, X_test, Y_test, n_neighbors, Type):
     return (correctCount*100)/(totalCount)
 
 
-best_result = []
-kNN_train = Vectorize(all_texts_train, "Hamming")
-kNN_test = Vectorize(all_texts_test, "Hamming")
-kNN_validate = Vectorize(all_texts_validate, "Hamming")
-kNN_train_Euclid = Vectorize(all_texts_train, "Euclidean")
-kNN_test_Euclid = Vectorize(all_texts_test, "Euclidean")
-kNN_validate_Euclid = Vectorize(all_texts_validate, "Euclidean")
-kNN_train_TF_IDF = Vectorize(all_texts_train, "TF-IDF")
-kNN_test_TF_IDF = Vectorize(all_texts_test, "TF-IDF")
-kNN_validate_TF_IDF = Vectorize(all_texts_validate, "TF-IDF")
-for n in range(1,6,2):
-    #if n%2 == 0 : continue
-    print(n)
 # =============================================================================
+# best_result = []
+# kNN_train = np.array(Vectorize(all_texts_train, "Hamming"))
+# kNN_test = np.array(Vectorize(all_texts_test, "Hamming"))
+# kNN_validate = np.array(Vectorize(all_texts_validate, "Hamming"))
+# kNN_train_Euclid = np.array(Vectorize(all_texts_train, "Euclidean"))
+# kNN_test_Euclid = np.array(Vectorize(all_texts_test, "Euclidean"))
+# kNN_validate_Euclid = np.array(Vectorize(all_texts_validate, "Euclidean"))
+# kNN_train_TF_IDF = np.array(Vectorize(all_texts_train, "TF-IDF"))
+# kNN_test_TF_IDF = np.array(Vectorize(all_texts_test, "TF-IDF"))
+# kNN_validate_TF_IDF = np.array(Vectorize(all_texts_validate, "TF-IDF"))
+# for n in range(1,6,2):
+#     #if n%2 == 0 : continue
+#     print(n)
 #     best_ham = performanceEvaluation(kNN_train, Topic_train, kNN_validate , Topic_validate, n, "Hamming")
 #     best_result.append((best_ham , n , "Hamming"))
 #     best_euclid = performanceEvaluation(kNN_train_Euclid,Topic_train,kNN_validate_Euclid,Topic_validate,n, "Euclidean")
 #     best_result.append((best_euclid , n , "Euclidean"))
+#     best_TF = performanceEvaluation(kNN_train_TF_IDF, Topic_train, kNN_validate_TF_IDF, Topic_validate, n, "TF-IDF")
+#     best_result.append((best_TF , n , "TF-IDF"))
+#     
+# best_result.sort(key=lambda x: x[0], reverse = True)
+# best_k = best_result[0][1]
+# best_type = best_result[0][2]
+# print("\n Best kNN : " , best_k , best_type)
 # =============================================================================
-    best_TF = performanceEvaluation(kNN_train_TF_IDF, Topic_train, kNN_validate_TF_IDF, Topic_validate, n, "TF-IDF")
-    best_result.append((best_TF , n , "TF-IDF"))
-    
-best_result.sort(key=lambda x: x[0], reverse = True)
-best_k = best_result[0][1]
-best_type = best_result[0][2]
-print("\n Best kNN : " , best_k , best_type)
     
 
 def prediction_NB(X_test, alpha, V):
@@ -408,43 +423,81 @@ def PerformanceNB(X_test, Y_test, alpha, V):
     print("\n Naive Bayes:\n alpha = ",alpha,"Total Correct Count: ",correctCount," Total Wrong Count: ",totalCount-correctCount," Accuracy: ",(correctCount*100)/(totalCount))
     return (correctCount*100)/(totalCount)
 
-best_accuracy = []
-alpha = np.arange(0.1, 1.1, 0.1)
+# =============================================================================
+# best_accuracy = []
+# alpha = np.arange(0.1, 1.1, 0.1)
+# V = len(all_words)
+# for alp in alpha:
+#     accuracy = PerformanceNB(all_texts_validate, Topic_validate, alp, V)
+#     best_accuracy.append(accuracy)
+# idx = np.argmax(best_accuracy)
+# best_alpha = alpha[idx]
+# print("\n Best Alpha: ", best_alpha)
+# =============================================================================
+
+best_type = "TF-IDF"
+best_k = 5
+best_alpha = 0.4
 V = len(all_words)
-for alp in alpha:
-    accuracy = PerformanceNB(all_texts_validate, Topic_validate, alp, V)
-    best_accuracy.append(accuracy)
-idx = np.argmax(best_accuracy)
-best_alpha = alpha[idx]
-print("\n Best Alpha: ", best_alpha)
-
-
-
 # =============================================================================
 #  All 50 Iterations.....
 # =============================================================================
-train_iter = []
-topic_train_iter = []
-test_iter = []
-topic_test_iter = []
+accuracy_kNN = []
+accuracy_NB = []
+train_kNN = Vectorize(all_texts_train, best_type)
+test_kNN = Vectorize(all_texts_test, best_type)
+print(len(all_topics))
 for i in range(50):
-    for c in range(len(content)):
+    train = []
+    test = []
+    
+    train_iter = []
+    topic_train_iter = []
+    test_iter = []
+    topic_test_iter = []
+    for c in range(len(all_topics)):
         a = []
-        slic = (i*200) + (c*4)
-        a = all_texts_train[slic : slic+4]
+        slic = (c*500) + (i*10)
+        a = train_kNN[slic: slic+10]
+        train = train + a
+        a = test_kNN[slic: slic+10]
+        test = test + a
+        
+        a = all_texts_train[slic : slic+10]
         train_iter = train_iter + a
-        a = all_texts_test[slic : slic+4]
+        a = all_texts_test[slic : slic+10]
         test_iter = test_iter + a
-        a = Topic_train[slic : slic+4]
+        a = Topic_train[slic : slic+10]
         topic_train_iter = topic_train_iter + a
-        a = Topic_test[slic : slic+4]
+        a = Topic_test[slic : slic+10]
         topic_test_iter = topic_test_iter + a
-    train = Vectorize(train_iter, best_type)
-    test = Vectorize(test_iter, best_type)
-    accuracy_kNN = performanceEvaluation(train, Topic_train, test, Topic_test, best_k, best_type)
-    accuracy_NB = PerformanceNB(test_iter, topic_test_iter, best_alpha, V)
-    print("\n Iteration: " , i + "\n Accuracy kNN: ", accuracy_kNN + " Accuracy NB: " , accuracy_NB)
+# =============================================================================
+#         print("\n c:", slic)
+#         print("\n topic: ", topic_train_iter)
+# =============================================================================
+    #print("\n data: ", train_iter, test_iter , topic_train_iter , topic_test_iter)
+    train_k = np.array(train)
+    test_k = np.array(test)
+    accuracy_kNN.append(performanceEvaluation(train_k, topic_train_iter, test_k, topic_test_iter, best_k, best_type))
+    accuracy_NB.append(PerformanceNB(test_iter, topic_test_iter, best_alpha, V))
+    print("\n Iteration: " , i , "\n Accuracy kNN: ", accuracy_kNN[i] , " Accuracy NB: " , accuracy_NB[i])
 
+
+ttest = stats.ttest_rel(accuracy_kNN,accuracy_NB)
+stat = ttest[0]
+p_value = ttest[1]
+Significance = [0.005, 0.01 , 0.05]
+for s in Significance:
+    if p_value < s:
+        if stat < 0:
+            print("\nNaive Bayes is better than kNN. P_value: ", p_value)
+        else:
+            print("\nkNN is better than Naive Bayes. P_value: ", p_value)
+    else:
+        if stat < 0:
+            print("\nNaive Bayes is probably better than kNN. P_value: ", p_value)
+        else:
+            print("\nkNN is probably better than Naive Bayes. P_value: ", p_value)
 # =============================================================================
 # z = Prob_W_C(Words_Topic_NB[0][0], all_texts_train[10], 1, len(all_texts_train[0]))
 # z1 = Prob_W_C(Words_Topic_NB[1][0], all_texts_train[10], 1, len(all_texts_train[0]))
